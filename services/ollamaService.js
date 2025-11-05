@@ -377,6 +377,12 @@ class OllamaService {
             ` + config.specialPromptPreDefinedTags;
         }
 
+        // Debug: Log the system prompt to verify restrictions are included
+        console.log('[DEBUG] Ollama system prompt being sent to AI:');
+        console.log('--- START PROMPT ---');
+        console.log(systemPrompt);
+        console.log('--- END PROMPT ---');
+
         return `${systemPrompt}
         ${JSON.stringify(content)}
         `;

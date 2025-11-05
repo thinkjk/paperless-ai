@@ -182,6 +182,12 @@ class OpenAIService {
         systemPrompt = customPrompt + '\n\n' + config.mustHavePrompt;
       }
 
+      // Debug: Log the system prompt to verify restrictions are included
+      console.log('[DEBUG] System prompt being sent to AI:');
+      console.log('--- START PROMPT ---');
+      console.log(systemPrompt);
+      console.log('--- END PROMPT ---');
+
       // Calculate tokens AFTER all prompt modifications are complete
       const totalPromptTokens = await calculateTotalPromptTokens(
         systemPrompt,
