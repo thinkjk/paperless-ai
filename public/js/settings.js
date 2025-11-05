@@ -55,13 +55,12 @@ class FormManager {
         this.aiProcessedTag.addEventListener('change', () => this.toggleAiTagInput());
         this.usePromptTags.addEventListener('change', () => this.togglePromptTagsInput());
         this.disableAutomaticProcessing.addEventListener('change', () => this.handleDisableAutomaticProcessing());
-        
+
         this.initializePasswordToggles();
 
-        if (this.usePromptTags.value === 'yes') {
-            this.disablePromptElements();
-        }
-        
+        // Note: We no longer disable the system prompt when USE_PROMPT_TAGS is enabled
+        // because the predefined tags now APPEND to the system prompt instead of replacing it
+
         this.toggleAiTagInput();
         this.togglePromptTagsInput();
     }
@@ -205,13 +204,13 @@ class FormManager {
     togglePromptTagsInput() {
         const usePromptTags = this.usePromptTags.value;
         const promptTagsSection = document.getElementById('promptTagsSection');
-        
+
         if (usePromptTags === 'yes') {
             promptTagsSection.classList.remove('hidden');
-            this.disablePromptElements();
+            // Note: We no longer disable the system prompt when USE_PROMPT_TAGS is enabled
+            // because the predefined tags now APPEND to the system prompt instead of replacing it
         } else {
             promptTagsSection.classList.add('hidden');
-            this.enablePromptElements();
         }
     }
 
