@@ -297,29 +297,22 @@ class OllamaService {
             systemPrompt += '\n--- IMPORTANT RESTRICTIONS ---\n';
 
             if (hasTagRestrictions && existingTags && existingTags.length > 0) {
-                const tagNames = Array.isArray(existingTags)
-                    ? existingTags.map(tag => typeof tag === 'string' ? tag : tag.name).join(', ')
-                    : existingTags;
+                // existingTags is already an array of tag name strings
+                const tagNames = existingTags.join(', ');
                 systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
                 systemPrompt += `Available tags: ${tagNames}\n`;
             }
 
             if (hasCorrespondentRestrictions && correspondentList && correspondentList.length > 0) {
-                const correspondentNames = correspondentList
-                    .filter(Boolean)
-                    .map(correspondent => typeof correspondent === 'string' ? correspondent : correspondent?.name || '')
-                    .filter(name => name.length > 0)
-                    .join(', ');
+                // correspondentList is already an array of correspondent name strings
+                const correspondentNames = correspondentList.join(', ');
                 systemPrompt += `\nCORRESPONDENT: You MUST select a correspondent ONLY from the following existing correspondents. Do NOT create a new correspondent. Choose the ONE that best matches the document:\n`;
                 systemPrompt += `Available correspondents: ${correspondentNames}\n`;
             }
 
             if (hasDocTypeRestrictions && existingDocumentTypes && existingDocumentTypes.length > 0) {
-                const docTypeNames = existingDocumentTypes
-                    .filter(Boolean)
-                    .map(docType => typeof docType === 'string' ? docType : docType?.name || '')
-                    .filter(name => name.length > 0)
-                    .join(', ');
+                // existingDocumentTypes is already an array of document type name strings
+                const docTypeNames = existingDocumentTypes.join(', ');
                 systemPrompt += `\nDOCUMENT TYPE: You MUST select a document type ONLY from the following existing types. Do NOT create a new type. Choose the ONE that best matches the document:\n`;
                 systemPrompt += `Available document types: ${docTypeNames}\n`;
             }

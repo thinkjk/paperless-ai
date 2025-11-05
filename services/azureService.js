@@ -114,20 +114,21 @@ class AzureOpenAIService {
         systemPrompt += '\n--- IMPORTANT RESTRICTIONS ---\n';
 
         if (hasTagRestrictions && existingTags && existingTags.length > 0) {
-          const tagNames = existingTags.map(tag => tag.name).join(', ');
+          // existingTags is already an array of tag name strings
+          const tagNames = existingTags.join(', ');
           systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
           systemPrompt += `Available tags: ${tagNames}\n`;
         }
 
         if (hasCorrespondentRestrictions && existingCorrespondentList && existingCorrespondentList.length > 0) {
-          const correspondentNames = Array.isArray(existingCorrespondentList)
-            ? existingCorrespondentList.map(c => typeof c === 'string' ? c : c.name).join(', ')
-            : existingCorrespondentList;
+          // existingCorrespondentList is already an array of correspondent name strings
+          const correspondentNames = existingCorrespondentList.join(', ');
           systemPrompt += `\nCORRESPONDENT: You MUST select a correspondent ONLY from the following existing correspondents. Do NOT create a new correspondent. Choose the ONE that best matches the document:\n`;
           systemPrompt += `Available correspondents: ${correspondentNames}\n`;
         }
 
         if (hasDocTypeRestrictions && existingDocumentTypesList && existingDocumentTypesList.length > 0) {
+          // existingDocumentTypesList is already an array of document type name strings
           const docTypeNames = existingDocumentTypesList.join(', ');
           systemPrompt += `\nDOCUMENT TYPE: You MUST select a document type ONLY from the following existing types. Do NOT create a new type. Choose the ONE that best matches the document:\n`;
           systemPrompt += `Available document types: ${docTypeNames}\n`;
