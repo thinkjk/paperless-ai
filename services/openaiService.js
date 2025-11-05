@@ -179,11 +179,13 @@ class OpenAIService {
         systemPrompt += `\n\nAdditional context from external API:\n${validatedExternalApiData}`;
       }
 
+      // IMPORTANT: Do NOT replace systemPrompt here - it would wipe out the restriction section!
+      // Instead, append the predefined tags instruction if enabled
       if (process.env.USE_PROMPT_TAGS === 'yes') {
         promptTags = process.env.PROMPT_TAGS;
-        systemPrompt = `
-        Take these tags and try to match one or more to the document content.\n\n
-        ` + config.specialPromptPreDefinedTags;
+        // Append rather than replace to preserve restrictions
+        systemPrompt += `\n\nTake these tags and try to match one or more to the document content.\n\n`;
+        systemPrompt += config.specialPromptPreDefinedTags;
       }
 
       if (customPrompt) {
