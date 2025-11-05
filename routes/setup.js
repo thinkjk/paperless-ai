@@ -4356,6 +4356,125 @@ router.get('/api/processing-status', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/system-prompt:
+ *   post:
+ *     summary: Update the system prompt via API
+ *     description: Updates the SYSTEM_PROMPT environment variable. Requires x-api-key header.
+ *     tags:
+ *       - API
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - prompt
+ *             properties:
+ *               prompt:
+ *                 type: string
+ *                 description: The new system prompt
+ *                 example: "You are a document analysis AI..."
+ *     responses:
+ *       200:
+ *         description: System prompt updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "System prompt updated successfully"
+ *       400:
+ *         description: Missing prompt in request body
+ *       401:
+ *         description: Unauthorized - invalid API key
+ *       500:
+ *         description: Server error
+ */
+router.post('/api/system-prompt', express.json(), async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const envPath = path.join(__dirname, '..', '.env');
+
+    // Read current .env file
+    const envConfig = dotenv.parse(fs.readFileSync(envPath));
+
+    // Process the prompt (remove carriage returns and equals signs)
+    const processedPrompt = prompt.replace(/\r\n/g, '\n').replace(/=/g, '');
+
+    // Update the SYSTEM_PROMPT
+    envConfig.SYSTEM_PROMPT = processedPrompt;
+
+    // Write updated .env file
+    const envContent = Object.entries(envConfig)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    fs.writeFileSync(envPath, envContent);
+
+    // Update the environment variable for the current process
+    process.env.SYSTEM_PROMPT = processedPrompt;
+
+    res.json({
+      success: true,
+      message: 'System prompt updated successfully',
+      prompt: processedPrompt
+    });
+  } catch (error) {
+    console.error('Error updating system prompt:', error);
+    res.status(500).json({ error: 'Failed to update system prompt' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/system-prompt:
+ *   get:
+ *     summary: Get the current system prompt
+ *     description: Retrieves the current SYSTEM_PROMPT environment variable. Requires x-api-key header.
+ *     tags:
+ *       - API
+ *     security:
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: System prompt retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 prompt:
+ *                   type: string
+ *                   example: "You are a document analysis AI..."
+ *       401:
+ *         description: Unauthorized - invalid API key
+ */
+router.get('/api/system-prompt', async (req, res) => {
+  try {
+    const prompt = process.env.SYSTEM_PROMPT || '';
+    res.json({ prompt });
+  } catch (error) {
+    console.error('Error getting system prompt:', error);
+    res.status(500).json({ error: 'Failed to get system prompt' });
+  }
+});
+
 router.get('/api/rag-test', async (req, res) => {
   RAGService.initialize();
   try { 
