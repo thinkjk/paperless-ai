@@ -101,21 +101,51 @@ class CustomOpenAIService {
         .map(line => '    ' + line)  // Add proper indentation
         .join('\n');
 
-      // Get system prompt based on configuration
-      if (config.useExistingData === 'yes' && config.restrictToExistingTags === 'no' && config.restrictToExistingCorrespondents === 'no') {
-        systemPrompt = `
-        Pre-existing tags: ${existingTagsList}\n\n
-        Pre-existing correspondents: ${existingCorrespondentList}\n\n
-        Pre-existing document types: ${existingDocumentTypesList.join(', ')}\n\n
-        ` + process.env.SYSTEM_PROMPT + '\n\n' + config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
-        promptTags = '';
-      } else {
-        config.mustHavePrompt = config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
-        systemPrompt = process.env.SYSTEM_PROMPT + '\n\n' + config.mustHavePrompt;
-        promptTags = '';
+      // Build base system prompt
+      systemPrompt = process.env.SYSTEM_PROMPT + '\n\n';
+
+      // Add restriction instructions if any restrictions are enabled
+      const hasTagRestrictions = config.restrictToExistingTags === 'yes';
+      const hasCorrespondentRestrictions = config.restrictToExistingCorrespondents === 'yes';
+      const hasDocTypeRestrictions = config.restrictToExistingDocumentTypes === 'yes';
+
+      if (hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions) {
+        systemPrompt += '\n--- IMPORTANT RESTRICTIONS ---\n';
+
+        if (hasTagRestrictions && existingTags && existingTags.length > 0) {
+          const tagNames = existingTags.map(tag => tag.name).join(', ');
+          systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
+          systemPrompt += `Available tags: ${tagNames}\n`;
+        }
+
+        if (hasCorrespondentRestrictions && existingCorrespondentList && existingCorrespondentList.length > 0) {
+          const correspondentNames = Array.isArray(existingCorrespondentList)
+            ? existingCorrespondentList.map(c => typeof c === 'string' ? c : c.name).join(', ')
+            : existingCorrespondentList;
+          systemPrompt += `\nCORRESPONDENT: You MUST select a correspondent ONLY from the following existing correspondents. Do NOT create a new correspondent. Choose the ONE that best matches the document:\n`;
+          systemPrompt += `Available correspondents: ${correspondentNames}\n`;
+        }
+
+        if (hasDocTypeRestrictions && existingDocumentTypesList && existingDocumentTypesList.length > 0) {
+          const docTypeNames = existingDocumentTypesList.join(', ');
+          systemPrompt += `\nDOCUMENT TYPE: You MUST select a document type ONLY from the following existing types. Do NOT create a new type. Choose the ONE that best matches the document:\n`;
+          systemPrompt += `Available document types: ${docTypeNames}\n`;
+        }
+
+        systemPrompt += '--- END RESTRICTIONS ---\n\n';
+      } else if (config.useExistingData === 'yes') {
+        // If useExistingData is enabled but restrictions are not, show pre-existing data as reference
+        systemPrompt += `\nPre-existing tags: ${existingTagsList}\n`;
+        systemPrompt += `Pre-existing correspondents: ${existingCorrespondentList}\n`;
+        systemPrompt += `Pre-existing document types: ${existingDocumentTypesList.join(', ')}\n\n`;
       }
 
-      // Process placeholder replacements in system prompt
+      // Add the must-have prompt template
+      config.mustHavePrompt = config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
+      systemPrompt += config.mustHavePrompt;
+      promptTags = '';
+
+      // Process placeholder replacements in system prompt (for backward compatibility)
       systemPrompt = RestrictionPromptService.processRestrictionsInPrompt(
         systemPrompt,
         existingTags,

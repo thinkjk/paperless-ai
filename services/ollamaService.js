@@ -285,42 +285,71 @@ class OllamaService {
             .map(line => '    ' + line)  // Add proper indentation
             .join('\n');
 
-        // Get system prompt based on configuration
-        if (config.useExistingData === 'yes' && config.restrictToExistingTags === 'no' && config.restrictToExistingCorrespondents === 'no') {
-            // Format existing tags
-            const existingTagsList = existingTags.join(', ');
+        // Build base system prompt
+        systemPrompt = process.env.SYSTEM_PROMPT + '\n\n';
 
-            // Format existing correspondents - handle both array of objects and array of strings
+        // Add restriction instructions if any restrictions are enabled
+        const hasTagRestrictions = config.restrictToExistingTags === 'yes';
+        const hasCorrespondentRestrictions = config.restrictToExistingCorrespondents === 'yes';
+        const hasDocTypeRestrictions = config.restrictToExistingDocumentTypes === 'yes';
+
+        if (hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions) {
+            systemPrompt += '\n--- IMPORTANT RESTRICTIONS ---\n';
+
+            if (hasTagRestrictions && existingTags && existingTags.length > 0) {
+                const tagNames = Array.isArray(existingTags)
+                    ? existingTags.map(tag => typeof tag === 'string' ? tag : tag.name).join(', ')
+                    : existingTags;
+                systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
+                systemPrompt += `Available tags: ${tagNames}\n`;
+            }
+
+            if (hasCorrespondentRestrictions && correspondentList && correspondentList.length > 0) {
+                const correspondentNames = correspondentList
+                    .filter(Boolean)
+                    .map(correspondent => typeof correspondent === 'string' ? correspondent : correspondent?.name || '')
+                    .filter(name => name.length > 0)
+                    .join(', ');
+                systemPrompt += `\nCORRESPONDENT: You MUST select a correspondent ONLY from the following existing correspondents. Do NOT create a new correspondent. Choose the ONE that best matches the document:\n`;
+                systemPrompt += `Available correspondents: ${correspondentNames}\n`;
+            }
+
+            if (hasDocTypeRestrictions && existingDocumentTypes && existingDocumentTypes.length > 0) {
+                const docTypeNames = existingDocumentTypes
+                    .filter(Boolean)
+                    .map(docType => typeof docType === 'string' ? docType : docType?.name || '')
+                    .filter(name => name.length > 0)
+                    .join(', ');
+                systemPrompt += `\nDOCUMENT TYPE: You MUST select a document type ONLY from the following existing types. Do NOT create a new type. Choose the ONE that best matches the document:\n`;
+                systemPrompt += `Available document types: ${docTypeNames}\n`;
+            }
+
+            systemPrompt += '--- END RESTRICTIONS ---\n\n';
+        } else if (config.useExistingData === 'yes') {
+            // If useExistingData is enabled but restrictions are not, show pre-existing data as reference
+            const existingTagsList = Array.isArray(existingTags)
+                ? existingTags.map(tag => typeof tag === 'string' ? tag : tag.name).join(', ')
+                : existingTags;
             const existingCorrespondentList = correspondentList
-                .filter(Boolean)  // Remove any null/undefined entries
-                .map(correspondent => {
-                    if (typeof correspondent === 'string') return correspondent;
-                    return correspondent?.name || '';
-                })
-                .filter(name => name.length > 0)  // Remove empty strings
+                .filter(Boolean)
+                .map(correspondent => typeof correspondent === 'string' ? correspondent : correspondent?.name || '')
+                .filter(name => name.length > 0)
                 .join(', ');
-
-            // Format existing document types - handle both array of objects and array of strings
             const existingDocumentTypesList = existingDocumentTypes
-                .filter(Boolean)  // Remove any null/undefined entries
-                .map(docType => {
-                    if (typeof docType === 'string') return docType;
-                    return docType?.name || '';
-                })
-                .filter(name => name.length > 0)  // Remove empty strings
+                .filter(Boolean)
+                .map(docType => typeof docType === 'string' ? docType : docType?.name || '')
+                .filter(name => name.length > 0)
                 .join(', ');
 
-            systemPrompt = `
-            Pre-existing tags: ${existingTagsList}\n\n
-            Pre-existing correspondents: ${existingCorrespondentList}\n\n
-            Pre-existing document types: ${existingDocumentTypesList}\n\n
-            ` + process.env.SYSTEM_PROMPT + '\n\n' + config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
-            promptTags = '';
-        } else {
-            config.mustHavePrompt = config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
-            systemPrompt = process.env.SYSTEM_PROMPT + '\n\n' + config.mustHavePrompt;
-            promptTags = '';
+            systemPrompt += `\nPre-existing tags: ${existingTagsList}\n`;
+            systemPrompt += `Pre-existing correspondents: ${existingCorrespondentList}\n`;
+            systemPrompt += `Pre-existing document types: ${existingDocumentTypesList}\n\n`;
         }
+
+        // Add the must-have prompt template
+        config.mustHavePrompt = config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
+        systemPrompt += config.mustHavePrompt;
+        promptTags = '';
 
         // Get validated external API data if available
         let validatedExternalApiData = null;
@@ -334,7 +363,7 @@ class OllamaService {
             }
         }
 
-        // Process placeholder replacements in system prompt
+        // Process placeholder replacements in system prompt (for backward compatibility)
         systemPrompt = RestrictionPromptService.processRestrictionsInPrompt(
             systemPrompt,
             existingTags,
