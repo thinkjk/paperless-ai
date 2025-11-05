@@ -106,9 +106,18 @@ class AzureOpenAIService {
       systemPrompt = process.env.SYSTEM_PROMPT + '\n\n';
 
       // Add restriction instructions if any restrictions are enabled
-      const hasTagRestrictions = config.restrictToExistingTags === 'yes';
-      const hasCorrespondentRestrictions = config.restrictToExistingCorrespondents === 'yes';
-      const hasDocTypeRestrictions = config.restrictToExistingDocumentTypes === 'yes';
+      // Use options parameter if provided, otherwise fall back to config
+      const hasTagRestrictions = options.restrictToExistingTags !== undefined
+        ? options.restrictToExistingTags
+        : config.restrictToExistingTags === 'yes';
+      const hasCorrespondentRestrictions = options.restrictToExistingCorrespondents !== undefined
+        ? options.restrictToExistingCorrespondents
+        : config.restrictToExistingCorrespondents === 'yes';
+      const hasDocTypeRestrictions = options.restrictToExistingDocumentTypes !== undefined
+        ? options.restrictToExistingDocumentTypes
+        : config.restrictToExistingDocumentTypes === 'yes';
+
+      console.log(`[DEBUG] Azure restriction settings: tags=${hasTagRestrictions}, correspondents=${hasCorrespondentRestrictions}, docTypes=${hasDocTypeRestrictions}`);
 
       if (hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions) {
         systemPrompt += '\n--- IMPORTANT RESTRICTIONS ---\n';

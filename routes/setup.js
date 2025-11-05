@@ -1577,8 +1577,12 @@ async function processDocument(doc, existingTags, existingCorrespondentList, exi
   // Prepare options for AI service
   const options = {
     restrictToExistingTags: config.restrictToExistingTags === 'yes',
-    restrictToExistingCorrespondents: config.restrictToExistingCorrespondents === 'yes'
+    restrictToExistingCorrespondents: config.restrictToExistingCorrespondents === 'yes',
+    restrictToExistingDocumentTypes: config.restrictToExistingDocumentTypes === 'yes'
   };
+
+  console.log(`[DEBUG] Options being passed to AI service: tags=${options.restrictToExistingTags}, correspondents=${options.restrictToExistingCorrespondents}, docTypes=${options.restrictToExistingDocumentTypes}`);
+  console.log(`[DEBUG] Config restriction settings: RESTRICT_TO_EXISTING_TAGS=${config.restrictToExistingTags}, RESTRICT_TO_EXISTING_CORRESPONDENTS=${config.restrictToExistingCorrespondents}, RESTRICT_TO_EXISTING_DOCUMENT_TYPES=${config.restrictToExistingDocumentTypes}`);
 
   // Get external API data if enabled
   if (config.externalApiConfig.enabled === 'yes') {
