@@ -4411,6 +4411,7 @@ router.post('/api/system-prompt', express.json(), async (req, res) => {
 
     const fs = require('fs');
     const path = require('path');
+    const dotenv = require('dotenv');
     const envPath = path.join(__dirname, '..', '.env');
 
     // Read current .env file
