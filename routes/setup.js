@@ -155,6 +155,7 @@ router.use(async (req, res, next) => {
   // API key authentication
   if (apiKey && apiKey === process.env.API_KEY) {
     req.user = { apiKey: true };
+    return next(); // Skip setup check for API key users
   } else {
     // Fallback to JWT authentication
     if (!token) {

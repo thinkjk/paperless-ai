@@ -1030,11 +1030,41 @@ function transform(data) {
     
         // Copy functionality
         apiKeyContainer.addEventListener('click', async function() {
+            const apiKey = this.dataset.apiKey;
+
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(apiKey);
+                    showNotification('API key copied to clipboard!');
+                    return;
+                } catch (err) {
+                    console.warn('Clipboard API failed, trying fallback:', err);
+                }
+            }
+
+            // Fallback for non-secure contexts (HTTP)
             try {
-                await navigator.clipboard.writeText(this.dataset.apiKey);
-                showNotification('API key copied to clipboard!');
+                const textArea = document.createElement('textarea');
+                textArea.value = apiKey;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                if (successful) {
+                    showNotification('API key copied to clipboard!');
+                } else {
+                    throw new Error('Copy command failed');
+                }
             } catch (err) {
-                showNotification('Failed to copy API key!', true);
+                console.error('Copy failed:', err);
+                showNotification('Failed to copy API key! Please copy manually.', true);
             }
         });
     
