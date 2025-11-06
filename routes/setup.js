@@ -4412,7 +4412,7 @@ router.post('/api/system-prompt', express.json(), async (req, res) => {
     const fs = require('fs');
     const path = require('path');
     const dotenv = require('dotenv');
-    const envPath = path.join(__dirname, '..', '.env');
+    const envPath = path.join(__dirname, '..', 'data', '.env');
 
     // Read current .env file
     const envConfig = dotenv.parse(fs.readFileSync(envPath));
