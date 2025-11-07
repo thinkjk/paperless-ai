@@ -254,10 +254,11 @@ class OllamaService {
     _truncateContent(content) {
         try {
             // Set a sensible default max length to prevent Ollama from getting overwhelmed
-            // Large documents (14K+ tokens) cause Ollama to ignore the system prompt
-            // Default to 12000 characters (~3000 tokens) for better context while still manageable
+            // With large restriction lists (88 tags + 133 doc types = ~4300 tokens in system prompt),
+            // we need to keep document content smaller to stay within model context limits
+            // Default to 4000 characters (~1000 tokens) to leave room for restrictions + response
             // Users can override with CONTENT_MAX_LENGTH env var
-            const maxLength = process.env.CONTENT_MAX_LENGTH || 12000;
+            const maxLength = process.env.CONTENT_MAX_LENGTH || 4000;
 
             if (content.length > maxLength) {
                 console.log(`[DEBUG] Truncating content from ${content.length} to ${maxLength} characters`);
