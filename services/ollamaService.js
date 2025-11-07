@@ -313,6 +313,20 @@ class OllamaService {
         // Build base system prompt
         systemPrompt = process.env.SYSTEM_PROMPT + '\n\n';
 
+        // Add explicit JSON schema enforcement (helps with corrupted/malformed documents)
+        systemPrompt += `CRITICAL: You MUST return a JSON object with this EXACT structure, regardless of document quality:\n`;
+        systemPrompt += `{\n`;
+        systemPrompt += `  "title": "string",\n`;
+        systemPrompt += `  "correspondent": "string or null",\n`;
+        systemPrompt += `  "tags": ["array", "of", "strings"],\n`;
+        systemPrompt += `  "document_type": "string",\n`;
+        systemPrompt += `  "document_date": "YYYY-MM-DD or null",\n`;
+        systemPrompt += `  "language": "en/de/es/etc",\n`;
+        systemPrompt += `  "custom_fields": {}\n`;
+        systemPrompt += `}\n`;
+        systemPrompt += `If the document has corrupted text or unclear content, make your best guess but ALWAYS use this JSON structure.\n`;
+        systemPrompt += `Do NOT create alternative JSON formats (like "product", "instructions", "model_number", etc.).\n\n`;
+
         // Check restriction settings
         const hasTagRestrictions = options.restrictToExistingTags !== undefined
             ? options.restrictToExistingTags
@@ -761,10 +775,10 @@ class OllamaService {
             stream: false,
             format: "json",  // Force JSON output mode
             options: {
-                temperature: 0.3,  // Lower temperature for more consistent JSON
+                temperature: 0.5,  // Slightly higher for better handling of corrupted/unclear text
                 top_p: 0.9,
                 repeat_penalty: 1.1,
-                top_k: 7,
+                top_k: 10,  // Increased for more diverse token selection
                 num_predict: 512,  // Increase for longer responses
                 num_ctx: numCtx
             }

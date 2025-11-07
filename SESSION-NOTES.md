@@ -77,7 +77,20 @@ Local test confirmed truncation is working:
 - Document types will be selected from the existing 133-type list
 
 ### Docker Image
-Will be built as: `jkramer/paperless-ai:restrict-truncation-fix`
+Built as: `jkramer/paperless-ai:latest` and `jkramer/paperless-ai:restrict-to-existing`
+
+### Follow-up Fix: Handling Corrupted PDF Text (2025-11-07)
+
+After testing, 7 of 8 documents processed successfully, but Document #6 (Zephyr Range Hood) failed due to **corrupted PDF character encoding**. The OCR produced malformed text like `(cid:43)(cid:82)(cid:82)(cid:71)...` which confused Ollama into:
+- Returning wrong JSON schema (`{"product": [...], "instructions": [...]}` instead of the required format)
+- Creating unterminated strings in JSON
+
+**Additional Fixes Applied:**
+1. **Explicit JSON schema enforcement** - Added clear instructions to ALWAYS use the required JSON structure
+2. **Increased temperature** - Changed from 0.3 to 0.5 for better handling of unclear/corrupted text
+3. **Increased top_k** - Changed from 7 to 10 for more diverse token selection
+
+These changes help Ollama be more resilient when encountering corrupted OCR text while still enforcing the correct output format.
 
 ---
 
