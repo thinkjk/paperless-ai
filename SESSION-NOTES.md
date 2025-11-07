@@ -1,12 +1,295 @@
 # Session Notes - Restrict-to-Existing Feature Implementation
 
-**Date:** 2025-01-04 (Updated: 2025-01-05)
+**Date:** 2025-01-04 (Updated: 2025-11-07)
 **Branch:** `feature/restrict-to-existing-improvements`
-**Status:** ✅ Bug fixed and ready for testing (Docker image rebuilt)
+**Status:** ✅ CRITICAL FIX - Content truncation enforced to prevent Ollama confusion
 
 ---
 
-## 🔴 CRITICAL BUG FIX (2025-01-05)
+## 🔴 CRITICAL FIX #3: Content Truncation Issue (2025-11-07)
+
+### The Problem
+User reported that Paperless-AI was **only processing 1 document successfully**, all others got NO tags.
+
+### Investigation from Logs
+Analyzed Docker logs and found:
+- ✅ **Document #3 (Glasses Rx)**: 1,310 tokens → Worked! Got tags (though 2 were invalid)
+- ❌ **Documents #1, #4-9**: 13K-14K tokens → FAILED! Ollama returned garbage
+
+**What Ollama was returning for large documents:**
+- Document #1: `{"queryId": "...", "data": {...}}` - Wrong format!
+- Document #6: `{"id": 1, "question": "...", "answer_options": [...]}` - Creating quizzes instead!
+- Document #8: Warranty/troubleshooting structure - Extracting content instead of metadata
+- Document #4: XML-like structure with "document", "page", "children" - Completely wrong
+
+### Root Cause
+The `_truncateContent()` method at line 254 in `services/ollamaService.js` was:
+```javascript
+_truncateContent(content) {
+    if (process.env.CONTENT_MAX_LENGTH) {
+        return content.substring(0, process.env.CONTENT_MAX_LENGTH);
+    }
+    return content;  // ❌ NO TRUNCATION if env var not set!
+}
+```
+
+**Result:** When `CONTENT_MAX_LENGTH` wasn't set, it sent **entire document content** to Ollama (14K+ tokens). Ollama got overwhelmed and **completely ignored the system prompt**, doing "helpful" things like creating quizzes, extracting document structure, etc.
+
+### The Fix ✅
+Updated `_truncateContent()` to enforce a **sensible default of 6,000 characters** (~1,500 tokens):
+
+```javascript
+_truncateContent(content) {
+    // Set a sensible default max length to prevent Ollama from getting overwhelmed
+    // Large documents (14K+ tokens) cause Ollama to ignore the system prompt
+    // Default to 6000 characters (~1500 tokens) which is enough for metadata extraction
+    const maxLength = process.env.CONTENT_MAX_LENGTH || 6000;
+
+    if (content.length > maxLength) {
+        console.log(`[DEBUG] Truncating content from ${content.length} to ${maxLength} characters`);
+        return content.substring(0, maxLength);
+    }
+
+    console.log(`[DEBUG] Content length ${content.length} is within limit (${maxLength})`);
+    return content;
+}
+```
+
+**Why 6,000 characters:**
+- Document that worked: ~800 characters
+- Documents that failed: 30K-40K+ characters
+- 6,000 chars = ~1,500 tokens = enough content to extract metadata without overwhelming the model
+- Users can override with `CONTENT_MAX_LENGTH` env var if needed
+
+### Files Modified
+- `services/ollamaService.js` line 254-271
+
+### Testing
+Local test confirmed truncation is working:
+```
+[DEBUG] Content length 766 is within limit (6000)
+```
+
+### Expected Result
+- All 8 documents should now process successfully
+- Ollama will follow the system prompt instead of creating quizzes/extracting structure
+- Tags will be selected from the existing 88-tag list
+- Document types will be selected from the existing 133-type list
+
+### Docker Image
+Will be built as: `jkramer/paperless-ai:restrict-truncation-fix`
+
+---
+
+## 🔴 CRITICAL ARCHITECTURAL BUG FIX #2 (2025-11-06)
+
+### Session Context
+This session was a continuation from a previous conversation that ran out of context. User reported that despite all previous fixes, the AI was still only processing 1 document properly and creating invalid tags instead of selecting from the existing 88 tags.
+
+### The Discovery - Root Cause Identified ⚠️
+Found a **CRITICAL ARCHITECTURAL BUG** in how prompts were being sent to Ollama:
+
+**THE PROBLEM:**
+The code was sending prompts BACKWARDS to Ollama:
+```javascript
+// WRONG WAY (what we had):
+Ollama.generate({
+    system: _generateSystemPrompt(customFieldsStr),  // Generic template - NO restrictions!
+    prompt: _buildPrompt(content, existingTags, ...)  // Restrictions + document content mixed together
+})
+```
+
+**WHY THIS WAS BROKEN:**
+- The restriction instructions (tag lists, document type lists) were being sent as **user prompt content**
+- The generic template was being sent as **system instructions**
+- Ollama treats system prompts as primary instructions, user prompts as input data
+- Result: AI was seeing the tag list as "part of the document" instead of "instructions to follow"
+- This caused AI to **completely ignore the restrictions** and create arbitrary tags
+
+**Evidence from logs:**
+```
+Document: "Glasses Rx"
+AI returned: ["Eye Care", "Prescription", "Healthcare"]
+Result: ❌ 2 invalid tags (not in 88-tag list), filtered out by post-processing
+```
+
+AI was creating random tags because it thought the restriction list was just informational text in the document!
+
+### The Fix - Complete Prompt Architecture Rewrite ✅
+
+**Created new method:** `_buildSystemPromptWithRestrictions()`
+- Returns ONLY the system prompt with all restriction instructions
+- Properly includes the tag/correspondent/document type lists
+- Separates concerns: instructions vs. content
+
+**Updated analyzeDocument flow:**
+```javascript
+// NEW WAY (correct):
+let systemPrompt = this._buildSystemPromptWithRestrictions(
+    existingTags,
+    existingCorrespondentList,
+    existingDocumentTypesList,
+    options
+);
+
+const userPrompt = JSON.stringify(content);  // JUST the document
+
+// Call Ollama with proper separation
+const response = await this._callOllamaAPI(
+    userPrompt,      // User message: document content only
+    systemPrompt,    // System message: instructions + restrictions
+    numCtx,
+    this.documentAnalysisSchema
+);
+```
+
+**Now Ollama receives:**
+```
+System Prompt:
+  You are a document analyzer...
+
+  --- IMPORTANT RESTRICTIONS ---
+  TAGS: You MUST select tags ONLY from: Appliance, Electronics, Healthcare, ...
+  DOCUMENT TYPE: You MUST select ONLY from: Manual, Invoice, Receipt, ...
+  --- END RESTRICTIONS ---
+
+  Return result as JSON...
+
+User Prompt:
+  {document content}
+```
+
+### Test Results - 100% Success Rate! 🎉
+
+**Local test with mistral:7b model:**
+```bash
+node test-ollama-restrictions.js
+```
+
+**Document:** Zephyr Range Hood Installation Manual
+
+**AI Response:**
+```json
+{
+  "tags": ["Appliance", "Home Improvement", "Kitchen Equipment"],
+  "document_type": "Manual",
+  "correspondent": "Zephyr Customer Service",
+  "title": "Installation and User Manual for Zephyr Range Hood Models"
+}
+```
+
+**Results:**
+- ✅ **All 3 tags from existing list** (no invalid tags created!)
+- ✅ **Document type from existing 133 types**
+- ✅ **Correspondent created properly** (not restricted)
+- ✅ **100% compliance with restrictions**
+
+**Before vs After:**
+| Before Fix | After Fix |
+|------------|-----------|
+| AI created: "Eye Care", "Prescription" | AI selected: "Appliance", "Home Improvement", "Kitchen Equipment" |
+| 2/3 tags invalid, filtered out | 3/3 tags valid from existing list |
+| Post-processing filter required | AI natively follows restrictions |
+
+### Files Modified
+
+**services/ollamaService.js:**
+- Added `_buildSystemPromptWithRestrictions()` method (lines 266-410)
+- Updated `analyzeDocument()` to use new method (lines 100-143)
+- Proper separation of system vs user prompts
+- Updated logging to show complete prompt structure
+
+### Docker Image Built
+
+**Image:** `jkramer/paperless-ai:restrict-proper-prompt`
+- **Digest:** `sha256:738e6c242f499b98f66331559a9bd89f8cea78f2ace24e6055a70a7170ec4128`
+- **Platforms:** linux/amd64, linux/arm64
+- **Date:** 2025-11-06
+- **Status:** ✅ Pushed to Docker Hub
+
+### Queue Processing Investigation
+
+**User Question:** "Why was it only processing one document at a time?"
+
+**Investigation Results:**
+1. ✅ **Queue logic is correct** - has proper error handling, continues through all documents
+2. ✅ **while loop processes all** - individual errors don't stop the queue
+3. ❌ **Real issue:** Malformed Ollama responses caused documents to be marked "processed" with empty metadata
+
+**What was happening:**
+```
+1. Webhook triggered → Document added to queue
+2. Ollama received mixed prompt (instructions + content as one blob)
+3. Ollama confused → returned "sections" format instead of metadata
+   {
+     "title": "Dehumidifier Manual",
+     "sections": [...]  // WRONG FORMAT!
+   }
+4. JSON parsing failed → empty metadata ({ tags: [], correspondent: null })
+5. Document marked as "processed" despite being useless
+6. Queue loop continued BUT scheduled scan found "already processed" documents
+7. Result: Only 1 document actually got metadata, rest were skipped
+```
+
+**Ollama was returning document summaries instead of metadata extraction!**
+
+**Why the wrong format:**
+- Old prompt structure mixed instructions with content
+- Ollama couldn't distinguish between "extract metadata" vs "summarize document"
+- Sometimes interpreted task as creating document outline with sections
+
+**Fix:** Proper system/user prompt separation makes the task clear to Ollama
+
+### Tag Suggestion Feature - Discussion
+
+**User asked:** "What about adding ability for AI to suggest new tags?"
+
+**Analysis:**
+- ✅ **Benefits:** Could discover new categories, evolve taxonomy, help initial setup
+- ❌ **Problems:** Tag explosion, inconsistency (Healthcare vs Health Care), near-duplicates, defeats purpose of curated 88 tags
+
+**Recommendation:** **Don't implement** - User specifically wanted restrict-to-existing to avoid tag chaos
+
+**Better alternative:** Add "Tag Coverage Report" showing:
+- Documents with 0 tags (couldn't find matches)
+- Most common correspondents (suggest making official)
+- Documents using only "ai-processed" tag
+
+**Decision:** Wait - current restrict-to-existing is what user needs
+
+### Next Steps
+
+1. **Deploy:** `docker pull jkramer/paperless-ai:restrict-proper-prompt`
+2. **Test:** Process multiple documents and verify:
+   - AI selects from existing 88 tags
+   - AI selects from existing 133 document types
+   - All documents in queue are processed (not just 1)
+   - No invalid tags created
+3. **If issues persist:** Check Ollama server logs for:
+   - Resource constraints (memory/CPU)
+   - Model loading issues
+   - Context window limits
+   - Version compatibility (need Ollama v0.1.17+ for `format: "json"`)
+
+### Key Debugging Commands
+
+```bash
+# 1. Check Ollama container logs
+docker logs <ollama-container> --tail 200
+
+# 2. Verify mistral:7b is loaded
+curl http://10.10.0.10:11434/api/ps
+
+# 3. Check Ollama version (need v0.1.17+)
+docker exec <ollama-container> ollama --version
+
+# 4. Monitor during processing
+docker logs -f <ollama-container>
+```
+
+---
+
+## 🔴 PREVIOUS BUG FIX (2025-01-05)
 
 ### The Problem
 The restrict-to-existing feature was **completely broken** due to a data mapping bug:

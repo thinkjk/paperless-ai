@@ -97,10 +97,10 @@ class OllamaService {
                 }
             }
 
-            // Build prompt
-            let prompt;
+            // Build system prompt with restrictions
+            let systemPrompt;
             if (!customPrompt) {
-                prompt = this._buildPrompt(content, existingTags, existingCorrespondentList, existingDocumentTypesList, options);
+                systemPrompt = this._buildSystemPromptWithRestrictions(existingTags, existingCorrespondentList, existingDocumentTypesList, options);
             } else {
                 // Parse CUSTOM_FIELDS for custom prompt
                 let customFieldsObj;
@@ -124,28 +124,48 @@ class OllamaService {
                     .map(line => '    ' + line)
                     .join('\n');
 
-                prompt = customPrompt + '\n\n' + config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr) + "\n\n" + JSON.stringify(content);
+                systemPrompt = customPrompt + '\n\n' + config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
                 console.log('[DEBUG] Ollama Service started with custom prompt');
             }
 
-            // Generate custom fields for the prompt
-            const customFieldsStr = this._generateCustomFieldsTemplate();
-
-            // Generate system prompt
-            const systemPrompt = this._generateSystemPrompt(customFieldsStr);
+            // Prepare content as user prompt
+            const userPrompt = JSON.stringify(content);
 
             // Calculate context window size
-            const promptTokenCount = this._calculatePromptTokenCount(prompt);
+            const totalPrompt = systemPrompt + userPrompt;
+            const promptTokenCount = this._calculatePromptTokenCount(totalPrompt);
             const numCtx = this._calculateNumCtx(promptTokenCount, 1024);
 
             console.log(`[DEBUG] Use existing data: ${config.useExistingData}, Restrictions applied based on useExistingData setting`);
             console.log(`[DEBUG] External API data: ${validatedExternalApiData ? 'included' : 'none'}`);
 
-            // Call Ollama API
-            const response = await this._callOllamaAPI(prompt, systemPrompt, numCtx, this.documentAnalysisSchema);
+            // Call Ollama API with proper separation: system prompt vs user prompt
+            const response = await this._callOllamaAPI(userPrompt, systemPrompt, numCtx, this.documentAnalysisSchema);
 
             // Process response
             const parsedResponse = this._processOllamaResponse(response);
+
+            // CRITICAL: Enforce restrictions by filtering AI response
+            // If restrictions are enabled, remove any tags/types that don't exist
+            if (options.restrictToExistingTags && existingTags && existingTags.length > 0) {
+                const validTags = parsedResponse.tags.filter(tag => existingTags.includes(tag));
+                const invalidTags = parsedResponse.tags.filter(tag => !existingTags.includes(tag));
+
+                if (invalidTags.length > 0) {
+                    console.warn(`[WARNING] AI returned ${invalidTags.length} invalid tags (not in restriction list):`, invalidTags);
+                    console.log(`[INFO] Filtering to ${validTags.length} valid tags:`, validTags);
+                }
+
+                parsedResponse.tags = validTags;
+            }
+
+            if (options.restrictToExistingDocumentTypes && existingDocumentTypesList && existingDocumentTypesList.length > 0) {
+                if (parsedResponse.document_type && !existingDocumentTypesList.includes(parsedResponse.document_type)) {
+                    console.warn(`[WARNING] AI returned invalid document type "${parsedResponse.document_type}" (not in restriction list)`);
+                    console.log('[INFO] Setting document_type to null - will not update');
+                    parsedResponse.document_type = null;
+                }
+            }
 
             // Check for missing data
             if (parsedResponse.tags.length === 0 && parsedResponse.correspondent === null) {
@@ -153,7 +173,7 @@ class OllamaService {
             }
 
             // Log the prompt and response
-            await this._logPromptAndResponse(prompt, parsedResponse);
+            await this._logPromptAndResponse(systemPrompt + '\n\n' + userPrompt, parsedResponse);
 
             // Return results in consistent format
             return {
@@ -233,10 +253,17 @@ class OllamaService {
      */
     _truncateContent(content) {
         try {
-            if (process.env.CONTENT_MAX_LENGTH) {
-                console.log('Truncating content to max length:', process.env.CONTENT_MAX_LENGTH);
-                return content.substring(0, process.env.CONTENT_MAX_LENGTH);
+            // Set a sensible default max length to prevent Ollama from getting overwhelmed
+            // Large documents (14K+ tokens) cause Ollama to ignore the system prompt
+            // Default to 6000 characters (~1500 tokens) which is enough for metadata extraction
+            const maxLength = process.env.CONTENT_MAX_LENGTH || 6000;
+
+            if (content.length > maxLength) {
+                console.log(`[DEBUG] Truncating content from ${content.length} to ${maxLength} characters`);
+                return content.substring(0, maxLength);
             }
+
+            console.log(`[DEBUG] Content length ${content.length} is within limit (${maxLength})`);
         } catch (error) {
             console.error('Error truncating content:', error);
         }
@@ -244,7 +271,153 @@ class OllamaService {
     }
 
     /**
-     * Build prompt from content and existing data
+     * Build system prompt with restrictions (NEW METHOD)
+     * This returns ONLY the system prompt with restriction instructions
+     * @param {Array} existingTags - List of existing tags
+     * @param {Array} existingCorrespondent - List of existing correspondents
+     * @param {Array} existingDocumentTypes - List of existing document types
+     * @param {Object} options - Options including restriction flags
+     * @returns {string} System prompt with restrictions
+     */
+    _buildSystemPromptWithRestrictions(existingTags = [], existingCorrespondent = [], existingDocumentTypes = [], options = {}) {
+        let systemPrompt;
+
+        // Validate that existingCorrespondent is an array
+        const correspondentList = Array.isArray(existingCorrespondent)
+            ? existingCorrespondent
+            : [];
+
+        // Parse CUSTOM_FIELDS from environment variable
+        let customFieldsObj;
+        try {
+            customFieldsObj = JSON.parse(process.env.CUSTOM_FIELDS);
+        } catch (error) {
+            console.error('Failed to parse CUSTOM_FIELDS:', error);
+            customFieldsObj = { custom_fields: [] };
+        }
+
+        // Generate custom fields template
+        const customFieldsTemplate = {};
+        customFieldsObj.custom_fields.forEach((field, index) => {
+            customFieldsTemplate[index] = {
+                field_name: field.value,
+                value: "Fill in the value based on your analysis"
+            };
+        });
+
+        const customFieldsStr = '"custom_fields": ' + JSON.stringify(customFieldsTemplate, null, 2)
+            .split('\n')
+            .map(line => '    ' + line)
+            .join('\n');
+
+        // Build base system prompt
+        systemPrompt = process.env.SYSTEM_PROMPT + '\n\n';
+
+        // Check restriction settings
+        const hasTagRestrictions = options.restrictToExistingTags !== undefined
+            ? options.restrictToExistingTags
+            : config.restrictToExistingTags === 'yes';
+        const hasCorrespondentRestrictions = options.restrictToExistingCorrespondents !== undefined
+            ? options.restrictToExistingCorrespondents
+            : config.restrictToExistingCorrespondents === 'yes';
+        const hasDocTypeRestrictions = options.restrictToExistingDocumentTypes !== undefined
+            ? options.restrictToExistingDocumentTypes
+            : config.restrictToExistingDocumentTypes === 'yes';
+
+        console.log(`[DEBUG] Ollama restriction settings: tags=${hasTagRestrictions}, correspondents=${hasCorrespondentRestrictions}, docTypes=${hasDocTypeRestrictions}`);
+
+        // Add restriction instructions
+        if (hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions) {
+            systemPrompt += '\n--- IMPORTANT RESTRICTIONS ---\n';
+
+            if (hasTagRestrictions && existingTags && existingTags.length > 0) {
+                const tagNames = existingTags.join(', ');
+                systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
+                systemPrompt += `Available tags: ${tagNames}\n`;
+            }
+
+            if (hasCorrespondentRestrictions && correspondentList && correspondentList.length > 0) {
+                const correspondentNames = correspondentList.join(', ');
+                systemPrompt += `\nCORRESPONDENT: You MUST select a correspondent ONLY from the following existing correspondents. Do NOT create a new correspondent. Choose the ONE that best matches the document:\n`;
+                systemPrompt += `Available correspondents: ${correspondentNames}\n`;
+            }
+
+            if (hasDocTypeRestrictions && existingDocumentTypes && existingDocumentTypes.length > 0) {
+                const docTypeNames = existingDocumentTypes.join(', ');
+                systemPrompt += `\nDOCUMENT TYPE: You MUST select a document type ONLY from the following existing types. Do NOT create a new type. Choose the ONE that best matches the document:\n`;
+                systemPrompt += `Available document types: ${docTypeNames}\n`;
+            }
+
+            systemPrompt += '--- END RESTRICTIONS ---\n\n';
+        } else if (config.useExistingData === 'yes') {
+            // Show pre-existing data as reference
+            const existingTagsList = Array.isArray(existingTags)
+                ? existingTags.map(tag => typeof tag === 'string' ? tag : tag.name).join(', ')
+                : existingTags;
+            const existingCorrespondentListStr = correspondentList
+                .filter(Boolean)
+                .map(correspondent => typeof correspondent === 'string' ? correspondent : correspondent?.name || '')
+                .filter(name => name.length > 0)
+                .join(', ');
+            const existingDocumentTypesList = existingDocumentTypes
+                .filter(Boolean)
+                .map(docType => typeof docType === 'string' ? docType : docType?.name || '')
+                .filter(name => name.length > 0)
+                .join(', ');
+
+            systemPrompt += `\nPre-existing tags: ${existingTagsList}\n`;
+            systemPrompt += `Pre-existing correspondents: ${existingCorrespondentListStr}\n`;
+            systemPrompt += `Pre-existing document types: ${existingDocumentTypesList}\n\n`;
+        }
+
+        // Add the must-have prompt template
+        config.mustHavePrompt = config.mustHavePrompt.replace('%CUSTOMFIELDS%', customFieldsStr);
+        systemPrompt += config.mustHavePrompt;
+
+        // Get validated external API data if available
+        let validatedExternalApiData = null;
+        if (options.externalApiData) {
+            try {
+                validatedExternalApiData = this._validateAndTruncateExternalApiData(options.externalApiData);
+                console.log('[DEBUG] External API data validated and included');
+            } catch (error) {
+                console.warn('[WARNING] External API data validation failed:', error.message);
+                validatedExternalApiData = null;
+            }
+        }
+
+        // Process placeholder replacements (backward compatibility)
+        systemPrompt = RestrictionPromptService.processRestrictionsInPrompt(
+            systemPrompt,
+            existingTags,
+            correspondentList,
+            existingDocumentTypes,
+            config
+        );
+
+        // Include validated external API data
+        if (validatedExternalApiData) {
+            systemPrompt += `\n\nAdditional context from external API:\n${validatedExternalApiData}`;
+        }
+
+        // Handle USE_PROMPT_TAGS (only if restrictions are NOT enabled)
+        const hasAnyRestrictions = hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions;
+        if (process.env.USE_PROMPT_TAGS === 'yes' && !hasAnyRestrictions) {
+            systemPrompt += `\n\nTake these tags and try to match one or more to the document content.\n\n`;
+            systemPrompt += config.specialPromptPreDefinedTags;
+        }
+
+        // Debug: Log the system prompt
+        console.log('[DEBUG] Ollama system prompt being sent to AI:');
+        console.log('--- START SYSTEM PROMPT ---');
+        console.log(systemPrompt);
+        console.log('--- END SYSTEM PROMPT ---');
+
+        return systemPrompt;
+    }
+
+    /**
+     * Build prompt from content and existing data (LEGACY - kept for backward compatibility)
      * @param {string} content - Document content
      * @param {Array} existingTags - List of existing tags
      * @param {Array} existingCorrespondent - List of existing correspondents
@@ -380,8 +553,10 @@ class OllamaService {
         }
 
         // IMPORTANT: Do NOT replace systemPrompt here - it would wipe out the restriction section!
-        // Instead, append the predefined tags instruction if enabled
-        if (process.env.USE_PROMPT_TAGS === 'yes') {
+        // Only append USE_PROMPT_TAGS content if restrictions are NOT enabled
+        // If restrictions are enabled, the tag list is already in the restrictions section
+        const hasAnyRestrictions = hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions;
+        if (process.env.USE_PROMPT_TAGS === 'yes' && !hasAnyRestrictions) {
             promptTags = process.env.PROMPT_TAGS;
             // Append rather than replace to preserve restrictions
             systemPrompt += `\n\nTake these tags and try to match one or more to the document content.\n\n`;
@@ -584,13 +759,13 @@ class OllamaService {
             prompt: prompt,
             system: systemPrompt,
             stream: false,
-            format: schema,
+            format: "json",  // Force JSON output mode
             options: {
-                temperature: 0.7,
+                temperature: 0.3,  // Lower temperature for more consistent JSON
                 top_p: 0.9,
                 repeat_penalty: 1.1,
                 top_k: 7,
-                num_predict: 256,
+                num_predict: 512,  // Increase for longer responses
                 num_ctx: numCtx
             }
         });
@@ -608,10 +783,43 @@ class OllamaService {
      * @returns {Object} Parsed response
      */
     _processOllamaResponse(responseData) {
-        // Check if we got a structured response or need to parse from text
-        if (responseData.response && typeof responseData.response === 'object') {
-            // We got a structured response directly
-            console.log('Using structured output response');
+        // Log the raw response for debugging
+        console.log('[DEBUG] Raw Ollama response type:', typeof responseData.response);
+        console.log('[DEBUG] Raw Ollama response (first 500 chars):',
+            typeof responseData.response === 'string'
+                ? responseData.response.substring(0, 500)
+                : JSON.stringify(responseData.response).substring(0, 500)
+        );
+
+        if (!responseData.response) {
+            throw new Error('No response data from Ollama API');
+        }
+
+        // When format: "json" is used, Ollama returns JSON as a string that needs parsing
+        if (typeof responseData.response === 'string') {
+            try {
+                console.log('Parsing JSON string response from Ollama');
+                const parsed = JSON.parse(responseData.response);
+                console.log('[DEBUG] Successfully parsed JSON response');
+
+                // Return normalized structure
+                return {
+                    tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+                    correspondent: parsed.correspondent || null,
+                    title: parsed.title || null,
+                    document_date: parsed.document_date || null,
+                    document_type: parsed.document_type || null,
+                    language: parsed.language || null,
+                    custom_fields: parsed.custom_fields || null
+                };
+            } catch (jsonError) {
+                console.error('[ERROR] Failed to parse JSON from Ollama:', jsonError.message);
+                console.log('[DEBUG] Attempting fallback text parsing...');
+                return this._parseResponse(responseData.response);
+            }
+        } else if (typeof responseData.response === 'object') {
+            // Direct object response (shouldn't happen with format: "json", but handle it anyway)
+            console.log('Using structured output response (object)');
             return {
                 tags: Array.isArray(responseData.response.tags) ? responseData.response.tags : [],
                 correspondent: responseData.response.correspondent || null,
@@ -621,13 +829,9 @@ class OllamaService {
                 language: responseData.response.language || null,
                 custom_fields: responseData.response.custom_fields || null
             };
-        } else if (responseData.response) {
-            // Fall back to parsing from text response
-            console.log('Falling back to text response parsing');
-            return this._parseResponse(responseData.response);
-        } else {
-            throw new Error('No response data from Ollama API');
         }
+
+        throw new Error('Unexpected response format from Ollama');
     }
 
     /**
