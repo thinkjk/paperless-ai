@@ -255,8 +255,9 @@ class OllamaService {
         try {
             // Set a sensible default max length to prevent Ollama from getting overwhelmed
             // Large documents (14K+ tokens) cause Ollama to ignore the system prompt
-            // Default to 6000 characters (~1500 tokens) which is enough for metadata extraction
-            const maxLength = process.env.CONTENT_MAX_LENGTH || 6000;
+            // Default to 12000 characters (~3000 tokens) for better context while still manageable
+            // Users can override with CONTENT_MAX_LENGTH env var
+            const maxLength = process.env.CONTENT_MAX_LENGTH || 12000;
 
             if (content.length > maxLength) {
                 console.log(`[DEBUG] Truncating content from ${content.length} to ${maxLength} characters`);
