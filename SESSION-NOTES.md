@@ -104,6 +104,22 @@ Testing showed that while qwen2.5:7b successfully returned valid JSON for the co
 
 This gives the AI 2x more document content to work with while maintaining stability.
 
+### Revision: Reduced Context Back to 4K (2025-11-07)
+
+After testing with llama3.1:8b, discovered that the massive system prompt (88 tags + 133 document types = ~4,300 tokens) was overwhelming smaller open-source models when combined with 12K characters of document content.
+
+**Problem:** Models were creating invalid compound tags like "Weather Station", "Safety Instructions", "User Manual" instead of selecting from existing tags.
+
+**Solution:** Reduced content length from 12,000 → 4,000 characters to reduce cognitive load.
+
+**Token Budget Breakdown:**
+- System prompt (restrictions): ~4,300 tokens
+- Document content: ~1,000 tokens
+- Response: ~1,000 tokens
+- **Total:** ~6,300 tokens (within 8K limit for smaller models)
+
+**Note:** For best results with large restriction lists (88 tags), consider using OpenAI GPT-4 which handles complex prompts better than 7B-8B open-source models.
+
 ---
 
 ## 🔴 CRITICAL ARCHITECTURAL BUG FIX #2 (2025-11-06)
