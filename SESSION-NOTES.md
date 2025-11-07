@@ -92,6 +92,18 @@ After testing, 7 of 8 documents processed successfully, but Document #6 (Zephyr 
 
 These changes help Ollama be more resilient when encountering corrupted OCR text while still enforcing the correct output format.
 
+### Additional Improvement: Increased Context Length (2025-11-07)
+
+Testing showed that while qwen2.5:7b successfully returned valid JSON for the corrupted document, it only selected 1 tag ("Appliance") when it should have selected multiple tags like "Kitchen Equipment" and "Home Improvement".
+
+**Change Applied:**
+- Increased default content truncation from **6,000 to 12,000 characters** (~3,000 tokens)
+- Provides more context for the AI to make better tag selections
+- Still prevents the 14K+ token overflow that caused complete failures
+- Users can still override with `CONTENT_MAX_LENGTH` env var
+
+This gives the AI 2x more document content to work with while maintaining stability.
+
 ---
 
 ## 🔴 CRITICAL ARCHITECTURAL BUG FIX #2 (2025-11-06)
