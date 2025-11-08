@@ -348,7 +348,14 @@ class OllamaService {
 
             if (hasTagRestrictions && existingTags && existingTags.length > 0) {
                 const tagNames = existingTags.join(', ');
-                systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
+                systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags.\n`;
+                systemPrompt += `IMPORTANT: Do NOT use literal product names, object names, or document types as tags.\n`;
+                systemPrompt += `For example:\n`;
+                systemPrompt += `  - If the document is about a dishwasher, use "Appliance" and "Kitchen Equipment", NOT "Dishwasher"\n`;
+                systemPrompt += `  - If the document is a manual, use category tags like "Appliance", NOT "Manual" or "User Manual"\n`;
+                systemPrompt += `  - If the document is about a refrigerator, use "Appliance" and "Kitchen Equipment", NOT "Refrigerator"\n`;
+                systemPrompt += `Think about what CATEGORY the document belongs to, not what object is mentioned.\n`;
+                systemPrompt += `Choose 2-4 tags that best categorize the document.\n`;
                 systemPrompt += `Available tags: ${tagNames}\n`;
             }
 
@@ -497,7 +504,14 @@ class OllamaService {
             if (hasTagRestrictions && existingTags && existingTags.length > 0) {
                 // existingTags is already an array of tag name strings
                 const tagNames = existingTags.join(', ');
-                systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
+                systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags.\n`;
+                systemPrompt += `IMPORTANT: Do NOT use literal product names, object names, or document types as tags.\n`;
+                systemPrompt += `For example:\n`;
+                systemPrompt += `  - If the document is about a dishwasher, use "Appliance" and "Kitchen Equipment", NOT "Dishwasher"\n`;
+                systemPrompt += `  - If the document is a manual, use category tags like "Appliance", NOT "Manual" or "User Manual"\n`;
+                systemPrompt += `  - If the document is about a refrigerator, use "Appliance" and "Kitchen Equipment", NOT "Refrigerator"\n`;
+                systemPrompt += `Think about what CATEGORY the document belongs to, not what object is mentioned.\n`;
+                systemPrompt += `Choose 2-4 tags that best categorize the document.\n`;
                 systemPrompt += `Available tags: ${tagNames}\n`;
             }
 

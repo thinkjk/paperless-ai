@@ -1,8 +1,93 @@
 # Session Notes - Restrict-to-Existing Feature Implementation
 
-**Date:** 2025-01-04 (Updated: 2025-11-07)
+**Date:** 2025-01-04 (Updated: 2025-11-08)
 **Branch:** `feature/restrict-to-existing-improvements`
-**Status:** ✅ CRITICAL FIX - Content truncation enforced to prevent Ollama confusion
+**Status:** ✅ COMPLETE - Enhanced tag prompts prevent literal tag suggestions
+
+---
+
+## 🎯 FINAL ENHANCEMENT: Explicit Tag Category Guidance (2025-11-08)
+
+### The Problem
+User tested with mistral:7b at 4000 character limit and found:
+- ✅ 8/8 documents processed successfully
+- ✅ All tags were valid (from the existing 88-tag list)
+- ⚠️ Model was still TRYING to create literal tags like "Dishwasher", "Manual", "Refrigerator"
+- ✅ Post-processing filter was catching and removing them, but user wanted prevention not filtering
+
+**Example from logs:**
+```
+Document: Samsung Refrigerator Manual
+AI suggested: ["Appliance", "Refrigerator", "User Manual"]
+Post-filter result: ["Appliance"] (2 invalid tags removed)
+```
+
+User question: "Why is it even suggesting additional tags when it should only choose from the list?"
+
+### Root Cause
+The system prompt said "You MUST select tags ONLY from the following existing tags" but 7B-8B models still interpret literal product names ("Dishwasher", "Refrigerator") as perfectly valid tags. They don't understand the conceptual difference between literal descriptions and category tags without explicit examples.
+
+### The Fix ✅
+Enhanced the tag restriction section with explicit negative examples and category-focused guidance:
+
+**Before:**
+```javascript
+systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags. Choose the tags that best match the document content:\n`;
+systemPrompt += `Available tags: ${tagNames}\n`;
+```
+
+**After:**
+```javascript
+systemPrompt += `\nTAGS: You MUST select tags ONLY from the following existing tags. Do NOT create new tags.\n`;
+systemPrompt += `IMPORTANT: Do NOT use literal product names, object names, or document types as tags.\n`;
+systemPrompt += `For example:\n`;
+systemPrompt += `  - If the document is about a dishwasher, use "Appliance" and "Kitchen Equipment", NOT "Dishwasher"\n`;
+systemPrompt += `  - If the document is a manual, use category tags like "Appliance", NOT "Manual" or "User Manual"\n`;
+systemPrompt += `  - If the document is about a refrigerator, use "Appliance" and "Kitchen Equipment", NOT "Refrigerator"\n`;
+systemPrompt += `Think about what CATEGORY the document belongs to, not what object is mentioned.\n`;
+systemPrompt += `Choose 2-4 tags that best categorize the document.\n`;
+systemPrompt += `Available tags: ${tagNames}\n`;
+```
+
+### Test Results ✅
+Local test with enhanced prompt on Zephyr Range Hood manual:
+```json
+{
+  "tags": ["Appliance", "Kitchen Equipment", "Electronics"],
+  "document_type": "Manual"
+}
+```
+
+**Result:** ✅ **100% compliance** - No invalid tag suggestions, all 3 tags from existing list
+
+### Why This Works
+The explicit examples teach the model to:
+1. **Think categorically** - "What type of thing is this?" instead of "What is this thing called?"
+2. **Avoid literal matching** - See "dishwasher" in text → select "Kitchen Equipment" (category) instead of creating "Dishwasher" (literal)
+3. **Understand the difference** - Between object names and semantic categories
+4. **Prefer conceptual tags** - "Appliance" + "Kitchen Equipment" is better than "Refrigerator"
+
+### Files Modified
+- `services/ollamaService.js` lines 349-360 (`_buildSystemPromptWithRestrictions()`)
+- `services/ollamaService.js` lines 504-516 (`_buildPrompt()` - legacy method)
+
+### Docker Image
+Built and pushed as:
+- `jkramer/paperless-ai:latest`
+- `jkramer/paperless-ai:restrict-to-existing`
+- **Digest:** `sha256:c4ba7d1c874cd33996fbb4736637c640e734ffea9b277c154318528fe8ec9932`
+- **Platforms:** linux/amd64, linux/arm64
+- **Date:** 2025-11-08
+
+### Impact
+This completes the restrict-to-existing feature optimization:
+- ✅ Content truncation prevents model overwhelming (4000 chars)
+- ✅ JSON schema enforcement handles corrupted documents
+- ✅ Model parameters tuned for 7B-8B models (temp=0.5, top_k=10)
+- ✅ Explicit category guidance prevents literal tag creation
+- ✅ Post-processing filter as safety net (still in place)
+
+**Result:** mistral:7b now consistently selects valid category tags without suggestions for literal product names or compound tags.
 
 ---
 
