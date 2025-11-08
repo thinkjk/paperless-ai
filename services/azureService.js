@@ -170,11 +170,15 @@ class AzureOpenAIService {
         systemPrompt += `\n\nAdditional context from external API:\n${validatedExternalApiData}`;
       }
 
-      if (process.env.USE_PROMPT_TAGS === 'yes') {
+      // IMPORTANT: Do NOT replace systemPrompt here - it would wipe out the restriction section!
+      // Only append USE_PROMPT_TAGS content if restrictions are NOT enabled
+      // If restrictions are enabled, the tag list is already in the restrictions section
+      const hasAnyRestrictions = hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions;
+      if (process.env.USE_PROMPT_TAGS === 'yes' && !hasAnyRestrictions) {
         promptTags = process.env.PROMPT_TAGS;
-        systemPrompt = `
-        Take these tags and try to match one or more to the document content.\n\n
-        ` + config.specialPromptPreDefinedTags;
+        // Append rather than replace to preserve restrictions
+        systemPrompt += `\n\nTake these tags and try to match one or more to the document content.\n\n`;
+        systemPrompt += config.specialPromptPreDefinedTags;
       }
 
       if (customPrompt) {

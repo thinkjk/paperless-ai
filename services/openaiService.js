@@ -180,8 +180,10 @@ class OpenAIService {
       }
 
       // IMPORTANT: Do NOT replace systemPrompt here - it would wipe out the restriction section!
-      // Instead, append the predefined tags instruction if enabled
-      if (process.env.USE_PROMPT_TAGS === 'yes') {
+      // Only append USE_PROMPT_TAGS content if restrictions are NOT enabled
+      // If restrictions are enabled, the tag list is already in the restrictions section
+      const hasAnyRestrictions = hasTagRestrictions || hasCorrespondentRestrictions || hasDocTypeRestrictions;
+      if (process.env.USE_PROMPT_TAGS === 'yes' && !hasAnyRestrictions) {
         promptTags = process.env.PROMPT_TAGS;
         // Append rather than replace to preserve restrictions
         systemPrompt += `\n\nTake these tags and try to match one or more to the document content.\n\n`;
