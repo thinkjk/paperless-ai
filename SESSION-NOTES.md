@@ -1,8 +1,162 @@
 # Session Notes - Restrict-to-Existing Feature Implementation
 
 **Date:** 2025-01-04 (Updated: 2025-11-08)
-**Branch:** `feature/restrict-to-existing-improvements`
-**Status:** ✅ COMPLETE - Enhanced tag prompts prevent literal tag suggestions
+**Branch:** `main`
+**Status:** ✅ COMPLETE - Enhanced tag prompts + metadata replacement controls
+
+---
+
+## 🆕 NEW FEATURE: Optional Metadata Replacement Controls (2025-11-08)
+
+### The Problem
+User discovered that Paperless-ngx auto-tags documents BEFORE paperless-ai webhook fires. This caused unwanted tags to persist:
+- Paperless ML auto-tags: "Appliance" (wrong category)
+- paperless-ai webhook fires → AI selects correct tags from 88-tag list
+- **Current behavior**: AI tags were APPENDED to existing tags
+- **Result**: Documents had both wrong auto-tags + correct AI tags
+
+User question: "Do we need to remove existing tags first? Or is there a better way?"
+
+### The Solution ✅
+Added **optional UI toggles** to control whether AI replaces or keeps/appends existing metadata. This gives users flexibility to choose between:
+- **Learning mode**: Let Paperless auto-tag + AI append (helps Paperless ML learn over time)
+- **Clean mode**: AI replaces all metadata (immediate clean results)
+
+### Implementation Details
+
+**New Settings UI Section: "AI Metadata Replacement Behavior"**
+
+Four new checkboxes with independent control:
+
+1. **Replace Existing Tags** (default: OFF)
+   - OFF: Append AI tags to existing (current behavior, helps Paperless learn)
+   - ON: Remove all existing tags, use only AI-selected tags (clean results)
+
+2. **Replace Existing Correspondent** (default: OFF)
+   - OFF: Keep existing correspondent if set (current behavior)
+   - ON: Always use AI correspondent (override Paperless detection)
+
+3. **Replace Existing Document Type** (default: ON)
+   - OFF: Keep existing document type if set (NEW option)
+   - ON: Always use AI document type (current behavior)
+
+4. **Replace Existing Title** (default: ON)
+   - OFF: Keep existing title if set (NEW option)
+   - ON: Always use AI title (current behavior)
+
+### Files Modified
+
+**1. config/config.js**
+- Added `metadataReplacement` config section with 4 options
+- Environment variables: `REPLACE_EXISTING_TAGS`, `REPLACE_EXISTING_CORRESPONDENT`, etc.
+- Defaults maintain backward compatibility
+
+**2. views/settings.ejs** (lines 571-654)
+- Added new UI section with 4 checkboxes
+- Helpful descriptions explaining append vs replace behavior
+- Positioned after "AI Restrictions" section
+
+**3. services/paperlessService.js** (lines 1278-1350)
+- Updated `updateDocument()` signature to accept `options` parameter
+- Implemented conditional logic for each metadata field:
+  - **Tags**: If `replaceTags=yes` → use only AI tags; else → append to existing
+  - **Correspondent**: If `replaceCorrespondent=yes` → use AI; else → keep existing if set
+  - **Document Type**: If `replaceDocumentType=no` → keep existing; else → use AI
+  - **Title**: If `replaceTitle=no` → keep existing; else → use AI
+- Added comprehensive debug logging for each decision
+
+**4. routes/setup.js**
+- Updated `buildUpdateData()` to include replacement options (lines 1621-1634)
+- Updated `saveDocumentChanges()` to accept and pass `options` to `updateDocument()` (line 1739)
+- Updated both processing flows: scheduled scan (line 1532) and webhook queue (line 2404)
+- Updated GET `/settings` to load replacement settings (lines 2729-2732)
+- Updated POST `/settings` to save replacement settings (lines 4048-4051, 4150-4154, 4257-4261)
+
+### How It Works
+
+**Example: Removing Paperless Auto-Tags**
+
+```
+Before:
+1. User uploads document
+2. Paperless auto-tags: ["Appliance"] (wrong)
+3. Webhook fires → paperless-ai runs
+4. AI selects: ["Electronics", "Home Improvement"]
+5. Result: Document has ["Appliance", "Electronics", "Home Improvement"]
+   ❌ Wrong tag persists
+
+After (with Replace Tags enabled):
+1. User uploads document
+2. Paperless auto-tags: ["Appliance"] (wrong)
+3. Webhook fires → paperless-ai runs
+4. AI selects: ["Electronics", "Home Improvement"]
+5. Result: Document has ["Electronics", "Home Improvement"]
+   ✅ Only AI-selected tags, auto-tag removed
+```
+
+### Debug Logging
+
+When enabled, logs show decision-making:
+```
+[DEBUG] Current tags for document 123: [45]
+[DEBUG] New AI tags: [67, 89]
+[DEBUG] Replace tags setting: yes
+[DEBUG] Replace mode: Using only AI-selected tags
+```
+
+### Use Cases
+
+**Use Case 1: Clean Results (User's Issue)**
+- Enable: ☑ Replace Existing Tags
+- Benefit: Removes Paperless auto-tags, uses only AI-selected tags from 88-tag list
+- Trade-off: Paperless ML learns only from AI, not from its own attempts
+
+**Use Case 2: Help Paperless Learn**
+- Disable: ☐ Replace Existing Tags
+- Benefit: Paperless sees its attempts + AI corrections, improves over time
+- Trade-off: Documents temporarily have duplicate/wrong tags during learning phase
+
+**Use Case 3: Hybrid Approach**
+- Short term: Enable replacement for clean results while Paperless trains
+- Long term: Disable replacement once Paperless ML has learned patterns
+
+### Environment Variables
+
+Can also be set via `.env` or Docker environment:
+```bash
+REPLACE_EXISTING_TAGS=yes              # Remove existing tags
+REPLACE_EXISTING_CORRESPONDENT=yes     # Override correspondent
+REPLACE_EXISTING_DOCUMENT_TYPE=no      # Keep document type if exists
+REPLACE_EXISTING_TITLE=no              # Keep title if exists
+```
+
+### Docker Image
+Built and pushed as:
+- `jkramer/paperless-ai:latest`
+- `jkramer/paperless-ai:restrict-to-existing`
+- **Digest:** `sha256:1a36eb3c5cecc79770bfa3e6b51de4bbca8e15e7f04fbdfff4568c7c5df5c59f`
+- **Platforms:** linux/amd64, linux/arm64
+- **Date:** 2025-11-08
+
+### Backward Compatibility
+✅ **100% backward compatible** - defaults maintain existing behavior:
+- Tags: Append to existing (not replace)
+- Correspondent: Keep existing if set (not replace)
+- Document Type: Replace (current behavior)
+- Title: Replace (current behavior)
+
+If users don't change any settings, behavior is identical to previous version.
+
+### Testing Steps
+1. Pull new image: `docker pull jkramer/paperless-ai:latest`
+2. Restart container
+3. Open Settings → Find "AI Metadata Replacement Behavior" section
+4. Enable "Replace Existing Tags"
+5. Upload test document that Paperless auto-tags
+6. Verify only AI-selected tags remain (Paperless auto-tags removed)
+
+### Impact
+This feature gives users fine-grained control over the AI → Paperless metadata flow, addressing the common issue where Paperless-ngx pre-processes documents before AI analysis. Users can now choose the optimal strategy for their workflow.
 
 ---
 
