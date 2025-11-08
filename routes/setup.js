@@ -1529,8 +1529,8 @@ try {
             if (!result) continue;
     
             const { analysis, originalData } = result;
-            const updateData = await buildUpdateData(analysis, doc);
-            await saveDocumentChanges(doc.id, updateData, analysis, originalData);
+            const { updateData, options } = await buildUpdateData(analysis, doc);
+            await saveDocumentChanges(doc.id, updateData, analysis, originalData, options);
           } catch (error) {
             console.error(`[ERROR] processing document ${doc.id}:`, error);
           }
@@ -1622,10 +1622,16 @@ async function buildUpdateData(analysis, doc) {
   const options = {
     restrictToExistingTags: config.restrictToExistingTags === 'yes' ? true : false,
     restrictToExistingCorrespondents: config.restrictToExistingCorrespondents === 'yes' ? true : false,
-    restrictToExistingDocumentTypes: config.restrictToExistingDocumentTypes === 'yes' ? true : false
+    restrictToExistingDocumentTypes: config.restrictToExistingDocumentTypes === 'yes' ? true : false,
+    // Add metadata replacement settings
+    replaceTags: config.metadataReplacement?.replaceTags || 'no',
+    replaceCorrespondent: config.metadataReplacement?.replaceCorrespondent || 'no',
+    replaceDocumentType: config.metadataReplacement?.replaceDocumentType || 'yes',
+    replaceTitle: config.metadataReplacement?.replaceTitle || 'yes'
   };
 
   console.log(`[DEBUG] Building update data with restrictions: tags=${options.restrictToExistingTags}, correspondents=${options.restrictToExistingCorrespondents}, documentTypes=${options.restrictToExistingDocumentTypes}`);
+  console.log(`[DEBUG] Metadata replacement settings: replaceTags=${options.replaceTags}, replaceCorrespondent=${options.replaceCorrespondent}, replaceDocumentType=${options.replaceDocumentType}, replaceTitle=${options.replaceTitle}`);
 
   // Only process tags if tagging is activated
   if (config.limitFunctions?.activateTagging !== 'no') {
@@ -1727,18 +1733,18 @@ async function buildUpdateData(analysis, doc) {
     updateData.language = analysis.document.language;
   }
 
-  return updateData;
+  return { updateData, options };
 }
 
-async function saveDocumentChanges(docId, updateData, analysis, originalData) {
+async function saveDocumentChanges(docId, updateData, analysis, originalData, options = {}) {
   const { tags: originalTags, correspondent: originalCorrespondent, title: originalTitle } = originalData;
-  
+
   await Promise.all([
     documentModel.saveOriginalData(docId, originalTags, originalCorrespondent, originalTitle),
-    paperlessService.updateDocument(docId, updateData),
+    paperlessService.updateDocument(docId, updateData, options),
     documentModel.addProcessedDocument(docId, updateData.title),
     documentModel.addOpenAIMetrics(
-      docId, 
+      docId,
       analysis.metrics.promptTokens,
       analysis.metrics.completionTokens,
       analysis.metrics.totalTokens
@@ -2395,8 +2401,8 @@ async function processQueue(customPrompt) {
         if (!result) continue;
 
         const { analysis, originalData } = result;
-        const updateData = await buildUpdateData(analysis, doc);
-        await saveDocumentChanges(doc.id, updateData, analysis, originalData);
+        const { updateData, options } = await buildUpdateData(analysis, doc);
+        await saveDocumentChanges(doc.id, updateData, analysis, originalData, options);
       } catch (error) {
         console.error(`[ERROR] Failed to process document ${doc.id}:`, error);
       }
@@ -2720,6 +2726,10 @@ router.get('/settings', async (req, res) => {
     RESTRICT_TO_EXISTING_TAGS: process.env.RESTRICT_TO_EXISTING_TAGS || 'no',
     RESTRICT_TO_EXISTING_CORRESPONDENTS: process.env.RESTRICT_TO_EXISTING_CORRESPONDENTS || 'no',
     RESTRICT_TO_EXISTING_DOCUMENT_TYPES: process.env.RESTRICT_TO_EXISTING_DOCUMENT_TYPES || 'no',
+    REPLACE_EXISTING_TAGS: process.env.REPLACE_EXISTING_TAGS || 'no',
+    REPLACE_EXISTING_CORRESPONDENT: process.env.REPLACE_EXISTING_CORRESPONDENT || 'no',
+    REPLACE_EXISTING_DOCUMENT_TYPE: process.env.REPLACE_EXISTING_DOCUMENT_TYPE || 'yes',
+    REPLACE_EXISTING_TITLE: process.env.REPLACE_EXISTING_TITLE || 'yes',
     EXTERNAL_API_ENABLED: process.env.EXTERNAL_API_ENABLED || 'no',
     EXTERNAL_API_URL: process.env.EXTERNAL_API_URL || '',
     EXTERNAL_API_METHOD: process.env.EXTERNAL_API_METHOD || 'GET',
@@ -4005,8 +4015,8 @@ router.post('/setup', express.json(), async (req, res) => {
  */
 router.post('/settings', express.json(), async (req, res) => {
   try {
-    const { 
-      paperlessUrl, 
+    const {
+      paperlessUrl,
       paperlessToken,
       aiProvider,
       openaiKey,
@@ -4038,7 +4048,11 @@ router.post('/settings', express.json(), async (req, res) => {
       azureEndpoint,
       azureApiKey,
       azureDeploymentName,
-      azureApiVersion
+      azureApiVersion,
+      replaceExistingTags,
+      replaceExistingCorrespondent,
+      replaceExistingDocumentType,
+      replaceExistingTitle
     } = req.body;
 
     //replace equal char in system prompt
@@ -4085,6 +4099,10 @@ router.post('/settings', express.json(), async (req, res) => {
       RESTRICT_TO_EXISTING_TAGS: process.env.RESTRICT_TO_EXISTING_TAGS || 'no',
       RESTRICT_TO_EXISTING_CORRESPONDENTS: process.env.RESTRICT_TO_EXISTING_CORRESPONDENTS || 'no',
       RESTRICT_TO_EXISTING_DOCUMENT_TYPES: process.env.RESTRICT_TO_EXISTING_DOCUMENT_TYPES || 'no',
+      REPLACE_EXISTING_TAGS: process.env.REPLACE_EXISTING_TAGS || 'no',
+      REPLACE_EXISTING_CORRESPONDENT: process.env.REPLACE_EXISTING_CORRESPONDENT || 'no',
+      REPLACE_EXISTING_DOCUMENT_TYPE: process.env.REPLACE_EXISTING_DOCUMENT_TYPE || 'yes',
+      REPLACE_EXISTING_TITLE: process.env.REPLACE_EXISTING_TITLE || 'yes',
       EXTERNAL_API_ENABLED: process.env.EXTERNAL_API_ENABLED || 'no',
       EXTERNAL_API_URL: process.env.EXTERNAL_API_URL || '',
       EXTERNAL_API_METHOD: process.env.EXTERNAL_API_METHOD || 'GET',
@@ -4132,7 +4150,13 @@ router.post('/settings', express.json(), async (req, res) => {
     const restrictToExistingTags = req.body.restrictToExistingTags === 'on' || req.body.restrictToExistingTags === 'yes';
     const restrictToExistingCorrespondents = req.body.restrictToExistingCorrespondents === 'on' || req.body.restrictToExistingCorrespondents === 'yes';
     const restrictToExistingDocumentTypes = req.body.restrictToExistingDocumentTypes === 'on' || req.body.restrictToExistingDocumentTypes === 'yes';
-    
+
+    // Extract metadata replacement settings with defaults
+    const replaceExistingTagsSetting = req.body.replaceExistingTags === 'on' || req.body.replaceExistingTags === 'yes';
+    const replaceExistingCorrespondentSetting = req.body.replaceExistingCorrespondent === 'on' || req.body.replaceExistingCorrespondent === 'yes';
+    const replaceExistingDocumentTypeSetting = req.body.replaceExistingDocumentType === 'on' || req.body.replaceExistingDocumentType === 'yes';
+    const replaceExistingTitleSetting = req.body.replaceExistingTitle === 'on' || req.body.replaceExistingTitle === 'yes';
+
     // Extract external API settings with defaults
     const externalApiEnabled = req.body.externalApiEnabled === 'on' || req.body.externalApiEnabled === 'yes';
     const externalApiUrl = req.body.externalApiUrl || '';
@@ -4233,7 +4257,13 @@ router.post('/settings', express.json(), async (req, res) => {
       updatedConfig.RESTRICT_TO_EXISTING_TAGS = restrictToExistingTags ? 'yes' : 'no';
       updatedConfig.RESTRICT_TO_EXISTING_CORRESPONDENTS = restrictToExistingCorrespondents ? 'yes' : 'no';
       updatedConfig.RESTRICT_TO_EXISTING_DOCUMENT_TYPES = restrictToExistingDocumentTypes ? 'yes' : 'no';
-      
+
+      // Handle metadata replacement settings
+      updatedConfig.REPLACE_EXISTING_TAGS = replaceExistingTagsSetting ? 'yes' : 'no';
+      updatedConfig.REPLACE_EXISTING_CORRESPONDENT = replaceExistingCorrespondentSetting ? 'yes' : 'no';
+      updatedConfig.REPLACE_EXISTING_DOCUMENT_TYPE = replaceExistingDocumentTypeSetting ? 'yes' : 'no';
+      updatedConfig.REPLACE_EXISTING_TITLE = replaceExistingTitleSetting ? 'yes' : 'no';
+
       // Handle external API integration
       updatedConfig.EXTERNAL_API_ENABLED = externalApiEnabled ? 'yes' : 'no';
       updatedConfig.EXTERNAL_API_URL = externalApiUrl || '';

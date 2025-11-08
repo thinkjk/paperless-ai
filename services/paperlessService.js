@@ -1275,27 +1275,78 @@ async getOrCreateDocumentType(name, options = {}) {
   }
 
 
-  async updateDocument(documentId, updates) {
+  async updateDocument(documentId, updates, options = {}) {
     this.initialize();
     if (!this.client) return;
     try {
       const currentDoc = await this.getDocument(documentId);
-      
+
+      // Handle tags based on replacement setting
       if (updates.tags) {
         console.log(`[DEBUG] Current tags for document ${documentId}:`, currentDoc.tags);
-        console.log(`[DEBUG] Adding new tags:`, updates.tags);
-        console.log(`[DEBUG] Current correspondent:`, currentDoc.correspondent);
-        console.log(`[DEBUG] New correspondent:`, updates.correspondent);
-                
-        const combinedTags = [...new Set([...currentDoc.tags, ...updates.tags])];
-        updates.tags = combinedTags;
-        
-        console.log(`[DEBUG] Combined tags:`, combinedTags);
+        console.log(`[DEBUG] New AI tags:`, updates.tags);
+        console.log(`[DEBUG] Replace tags setting:`, options.replaceTags);
+
+        if (options.replaceTags === 'yes') {
+          // Replace mode: Use only AI tags
+          console.log('[DEBUG] Replace mode: Using only AI-selected tags');
+          // updates.tags already contains the new tags, no need to modify
+        } else {
+          // Append mode: Combine existing + new tags (default/current behavior)
+          console.log('[DEBUG] Append mode: Combining existing and AI tags');
+          const combinedTags = [...new Set([...currentDoc.tags, ...updates.tags])];
+          updates.tags = combinedTags;
+          console.log(`[DEBUG] Combined tags:`, combinedTags);
+        }
       }
 
+      // Handle correspondent based on replacement setting
       if (currentDoc.correspondent && updates.correspondent) {
-        console.log('[DEBUG] Document already has a correspondent, keeping existing one:', currentDoc.correspondent);
-        delete updates.correspondent;
+        console.log(`[DEBUG] Current correspondent:`, currentDoc.correspondent);
+        console.log(`[DEBUG] New AI correspondent:`, updates.correspondent);
+        console.log(`[DEBUG] Replace correspondent setting:`, options.replaceCorrespondent);
+
+        if (options.replaceCorrespondent === 'yes') {
+          // Replace mode: Use AI correspondent
+          console.log('[DEBUG] Replace mode: Using AI correspondent');
+          // updates.correspondent already contains the new correspondent
+        } else {
+          // Keep existing mode: Don't overwrite (default/current behavior)
+          console.log('[DEBUG] Keep mode: Keeping existing correspondent');
+          delete updates.correspondent;
+        }
+      }
+
+      // Handle document type based on replacement setting
+      if (currentDoc.document_type && updates.document_type) {
+        console.log(`[DEBUG] Current document type:`, currentDoc.document_type);
+        console.log(`[DEBUG] New AI document type:`, updates.document_type);
+        console.log(`[DEBUG] Replace document type setting:`, options.replaceDocumentType);
+
+        if (options.replaceDocumentType === 'no') {
+          // Keep existing mode: Don't overwrite
+          console.log('[DEBUG] Keep mode: Keeping existing document type');
+          delete updates.document_type;
+        } else {
+          // Replace mode: Use AI document type (default/current behavior)
+          console.log('[DEBUG] Replace mode: Using AI document type');
+        }
+      }
+
+      // Handle title based on replacement setting
+      if (currentDoc.title && updates.title) {
+        console.log(`[DEBUG] Current title:`, currentDoc.title);
+        console.log(`[DEBUG] New AI title:`, updates.title);
+        console.log(`[DEBUG] Replace title setting:`, options.replaceTitle);
+
+        if (options.replaceTitle === 'no') {
+          // Keep existing mode: Don't overwrite
+          console.log('[DEBUG] Keep mode: Keeping existing title');
+          delete updates.title;
+        } else {
+          // Replace mode: Use AI title (default/current behavior)
+          console.log('[DEBUG] Replace mode: Using AI title');
+        }
       }
 
       let updateData;

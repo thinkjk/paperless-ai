@@ -567,7 +567,92 @@
                                         </div>
                                     </div>
                                 </div>
-                                
+
+                                <!-- Metadata Replacement Behavior Section -->
+                                <div class="border-t pt-4 space-y-4">
+                                    <div class="space-y-2">
+                                        <h3 class="text-lg font-medium flex items-center gap-2 text-primary">
+                                            <i class="fas fa-sync-alt"></i>
+                                            AI Metadata Replacement Behavior
+                                        </h3>
+                                        <p class="text-sm text-gray-600">
+                                            Control whether AI replaces existing metadata or adds to it. Useful when Paperless-ngx auto-tags documents before AI processing.
+                                        </p>
+
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="border border-gray-200 shadow-sm rounded-lg hover:border-blue-500 transition-colors duration-200">
+                                                <label for="replaceExistingTags" class="flex items-center p-4 cursor-pointer w-full">
+                                                    <input type="checkbox"
+                                                        id="replaceExistingTags"
+                                                        name="replaceExistingTags"
+                                                        class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                        <%= config.REPLACE_EXISTING_TAGS === 'yes' ? 'checked' : '' %>>
+                                                    <div class="ml-3">
+                                                        <div class="flex items-center text-gray-900 font-medium">
+                                                            <i class="fas fa-tags mr-2 text-blue-500"></i>
+                                                            Replace Existing Tags
+                                                        </div>
+                                                        <p class="text-sm text-gray-500 mt-1">Remove all existing tags and use only AI-selected tags (vs. adding to existing)</p>
+                                                    </div>
+                                                </label>
+                                            </div>
+
+                                            <div class="border border-gray-200 shadow-sm rounded-lg hover:border-blue-500 transition-colors duration-200">
+                                                <label for="replaceExistingCorrespondent" class="flex items-center p-4 cursor-pointer w-full">
+                                                    <input type="checkbox"
+                                                        id="replaceExistingCorrespondent"
+                                                        name="replaceExistingCorrespondent"
+                                                        class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                        <%= config.REPLACE_EXISTING_CORRESPONDENT === 'yes' ? 'checked' : '' %>>
+                                                    <div class="ml-3">
+                                                        <div class="flex items-center text-gray-900 font-medium">
+                                                            <i class="fas fa-user mr-2 text-blue-500"></i>
+                                                            Replace Existing Correspondent
+                                                        </div>
+                                                        <p class="text-sm text-gray-500 mt-1">Use AI correspondent even if one exists (vs. keeping existing)</p>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                            <div class="border border-gray-200 shadow-sm rounded-lg hover:border-blue-500 transition-colors duration-200">
+                                                <label for="replaceExistingDocumentType" class="flex items-center p-4 cursor-pointer w-full">
+                                                    <input type="checkbox"
+                                                        id="replaceExistingDocumentType"
+                                                        name="replaceExistingDocumentType"
+                                                        class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                        <%= config.REPLACE_EXISTING_DOCUMENT_TYPE === 'yes' ? 'checked' : '' %>>
+                                                    <div class="ml-3">
+                                                        <div class="flex items-center text-gray-900 font-medium">
+                                                            <i class="fas fa-file-alt mr-2 text-blue-500"></i>
+                                                            Replace Existing Document Type
+                                                        </div>
+                                                        <p class="text-sm text-gray-500 mt-1">Use AI document type even if one exists (vs. keeping existing)</p>
+                                                    </div>
+                                                </label>
+                                            </div>
+
+                                            <div class="border border-gray-200 shadow-sm rounded-lg hover:border-blue-500 transition-colors duration-200">
+                                                <label for="replaceExistingTitle" class="flex items-center p-4 cursor-pointer w-full">
+                                                    <input type="checkbox"
+                                                        id="replaceExistingTitle"
+                                                        name="replaceExistingTitle"
+                                                        class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                        <%= config.REPLACE_EXISTING_TITLE === 'yes' ? 'checked' : '' %>>
+                                                    <div class="ml-3">
+                                                        <div class="flex items-center text-gray-900 font-medium">
+                                                            <i class="fas fa-heading mr-2 text-blue-500"></i>
+                                                            Replace Existing Title
+                                                        </div>
+                                                        <p class="text-sm text-gray-500 mt-1">Use AI title even if one exists (vs. keeping existing)</p>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- External API Integration Section -->
                                 <div class="border-t pt-4 space-y-4">
                                     <div class="space-y-2">

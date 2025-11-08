@@ -32,6 +32,22 @@ console.log('Loaded restriction settings:', {
   RESTRICT_TO_EXISTING_DOCUMENT_TYPES: aiRestrictions.restrictToExistingDocumentTypes
 });
 
+// Initialize metadata replacement behavior with defaults
+// These control whether AI replaces existing metadata or keeps/appends to it
+const metadataReplacement = {
+  replaceTags: parseEnvBoolean(process.env.REPLACE_EXISTING_TAGS, 'no'), // 'no' = append to existing (current behavior)
+  replaceCorrespondent: parseEnvBoolean(process.env.REPLACE_EXISTING_CORRESPONDENT, 'no'), // 'no' = keep existing if set (current behavior)
+  replaceDocumentType: parseEnvBoolean(process.env.REPLACE_EXISTING_DOCUMENT_TYPE, 'yes'), // 'yes' = replace (current behavior)
+  replaceTitle: parseEnvBoolean(process.env.REPLACE_EXISTING_TITLE, 'yes') // 'yes' = replace (current behavior)
+};
+
+console.log('Loaded metadata replacement settings:', {
+  REPLACE_EXISTING_TAGS: metadataReplacement.replaceTags,
+  REPLACE_EXISTING_CORRESPONDENT: metadataReplacement.replaceCorrespondent,
+  REPLACE_EXISTING_DOCUMENT_TYPE: metadataReplacement.replaceDocumentType,
+  REPLACE_EXISTING_TITLE: metadataReplacement.replaceTitle
+});
+
 // Initialize external API configuration
 const externalApiConfig = {
   enabled: parseEnvBoolean(process.env.EXTERNAL_API_ENABLED, 'no'),
@@ -48,6 +64,7 @@ console.log('Loaded environment variables:', {
   PAPERLESS_API_TOKEN: '******',
   LIMIT_FUNCTIONS: limitFunctions,
   AI_RESTRICTIONS: aiRestrictions,
+  METADATA_REPLACEMENT: metadataReplacement,
   EXTERNAL_API: externalApiConfig.enabled === 'yes' ? 'enabled' : 'disabled'
 });
 
@@ -64,6 +81,13 @@ module.exports = {
   restrictToExistingTags: aiRestrictions.restrictToExistingTags,
   restrictToExistingCorrespondents: aiRestrictions.restrictToExistingCorrespondents,
   restrictToExistingDocumentTypes: aiRestrictions.restrictToExistingDocumentTypes,
+  // Metadata replacement config
+  metadataReplacement: {
+    replaceTags: metadataReplacement.replaceTags,
+    replaceCorrespondent: metadataReplacement.replaceCorrespondent,
+    replaceDocumentType: metadataReplacement.replaceDocumentType,
+    replaceTitle: metadataReplacement.replaceTitle
+  },
   // External API config
   externalApiConfig: externalApiConfig,
   paperless: {
